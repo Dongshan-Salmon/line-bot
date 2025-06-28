@@ -23,8 +23,8 @@ app = Flask(__name__)
 
 # 從環境變數或直接填寫您的 Channel Access Token 和 Channel Secret
 # 為了安全性，建議部署時使用環境變數
-configuration = Configuration(access_token='YOUR_CHANNEL_ACCESS_TOKEN')
-handler = WebhookHandler('YOUR_CHANNEL_SECRET')
+configuration = Configuration(access_token='e8838ada7890139ae15d36b51c4efa07')
+handler = WebhookHandler('57d225ffcb534d84d5477d215397e44a')
 
 # 這個是 Webhook 的路徑，LINE Platform 會把使用者的訊息傳送到這裡
 @app.route("/callback", methods=['POST'])
