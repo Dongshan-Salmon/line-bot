@@ -21,10 +21,17 @@ import os
 
 app = Flask(__name__)
 
-# 從環境變數或直接填寫您的 Channel Access Token 和 Channel Secret
-# 為了安全性，建議部署時使用環境變數
-configuration = Configuration(access_token='e8838ada7890139ae15d36b51c4efa07')
-handler = WebhookHandler('57d225ffcb534d84d5477d215397e44a')
+# --- 這一段是修正的關鍵 ---
+# 從 Render 的環境變數中讀取您的金鑰
+# os.environ.get('KEY_NAME') 會去尋找您在 Render 環境變數中設定的 KEY_NAME
+access_token = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN')
+channel_secret = os.environ.get('LINE_CHANNEL_SECRET')
+
+# 使用從環境變數讀取到的值來設定
+configuration = Configuration(access_token=access_token)
+handler = WebhookHandler(channel_secret)
+# --- 修正結束 ---
+
 
 # 這個是 Webhook 的路徑，LINE Platform 會把使用者的訊息傳送到這裡
 @app.route("/callback", methods=['POST'])
