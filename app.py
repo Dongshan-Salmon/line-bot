@@ -18,55 +18,71 @@ from linebot.v3.webhooks import (
     TextMessageContent
 )
 import os
+import requests # 導入 requests 函式庫
 
 app = Flask(__name__)
 
-# --- 這一段是修正的關鍵 ---
-# 從 Render 的環境變數中讀取您的金鑰
-# os.environ.get('KEY_NAME') 會去尋找您在 Render 環境變數中設定的 KEY_NAME
-access_token = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN')
-channel_secret = os.environ.get('LINE_CHANNEL_SECRET')
+# 從環境變數讀取 LINE 的金鑰
+line_access_token = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN')
+line_channel_secret = os.environ.get('LINE_CHANNEL_SECRET')
 
-# 使用從環境變數讀取到的值來設定
-configuration = Configuration(access_token=access_token)
-handler = WebhookHandler(channel_secret)
-# --- 修正結束 ---
+# 從環境變數讀取 Dify 的金鑰
+dify_api_key = os.environ.get('DIFY_API_KEY')
+dify_api_url = 'https://api.dify.ai/v1/chat-messages' # 這是 Dify 的對話 API URL
 
+configuration = Configuration(access_token=line_access_token)
+handler = WebhookHandler(line_channel_secret)
 
-# 這個是 Webhook 的路徑，LINE Platform 會把使用者的訊息傳送到這裡
 @app.route("/callback", methods=['POST'])
 def callback():
-    # 取得 X-Line-Signature 標頭值
     signature = request.headers['X-Line-Signature']
-
-    # 取得請求主體
     body = request.get_data(as_text=True)
     app.logger.info("Request body: " + body)
-
-    # 處理 Webhook 主體
     try:
         handler.handle(body, signature)
     except InvalidSignatureError:
-        app.logger.info("Invalid signature. Please check your channel access token/channel secret.")
         abort(400)
-
     return 'OK'
 
-# 處理文字訊息事件
+# --- 這是修改的核心 ---
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_message(event):
+    # 1. 準備呼叫 Dify API 所需的資料
+    headers = {
+        'Authorization': f'Bearer {dify_api_key}',
+        'Content-Type': 'application/json',
+    }
+    data = {
+        'inputs': {},
+        'query': event.message.text, # 使用者傳來的訊息
+        'user': event.source.user_id, # 使用者的 LINE User ID
+        'response_mode': 'blocking',
+    }
+
+    # 2. 呼叫 Dify API
+    try:
+        response = requests.post(dify_api_url, headers=headers, json=data)
+        response.raise_for_status() # 如果 API 回應錯誤 (非 2xx)，會拋出異常
+        
+        # 3. 取得 Dify 回傳的答案
+        dify_response_data = response.json()
+        reply_text = dify_response_data.get('answer', '抱歉，我現在無法回答。')
+
+    except requests.exceptions.RequestException as e:
+        app.logger.error(f"Dify API request failed: {e}")
+        reply_text = "系統忙碌中，請稍後再試。"
+
+    # 4. 將 Dify 的答案回覆給使用者
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
-        # 將收到的訊息原封不動地回傳
         line_bot_api.reply_message_with_http_info(
             ReplyMessageRequest(
                 reply_token=event.reply_token,
-                messages=[TextMessage(text=event.message.text)]
+                messages=[TextMessage(text=reply_text)]
             )
         )
 
-# 讓 Flask 應用程式可以被外部訪問
+# --- 啟動伺服器 (維持不變) ---
 if __name__ == "__main__":
-    # 取得 hosting 服務設定的 PORT，如果在本機測試，預設為 5000
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
